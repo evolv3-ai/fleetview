@@ -1,0 +1,12 @@
+[project]
+name = "fleetview"
+version = "0.1.0"
+description = "Sentinel Fleet Dashboard - TUI for monitoring server fleets"
+requires-python = ">=3.11"
+dependencies = [
+    "textual>=0.89.0",
+    "httpx>=0.27.0",
+]
+
+[project.scripts]
+fleetview = "app:SentinelDashboard.run"

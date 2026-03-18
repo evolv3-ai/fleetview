@@ -91,7 +91,7 @@ class ServerPanel(Static):
             return f"[dim]{self.server_id}[/dim]\n  Loading..."
 
         cfg = d.cfg
-        name = cfg["name"]
+        name = cfg["id"]
         role = cfg["role"]
 
         domain = cfg.get("domain", "")
@@ -328,7 +328,7 @@ class SentinelDashboard(App):
             webbrowser.open(url)
             self.notify(f"Opening {url}")
         else:
-            self.notify(f"No URL configured for {srv['name']}", severity="warning")
+            self.notify(f"No URL configured for {srv['id']}", severity="warning")
 
     def action_refresh(self) -> None:
         self.run_worker(self._poll_all())
@@ -445,7 +445,7 @@ class SentinelDashboard(App):
 
         if not data.online:
             header.update(
-                f"[bold]{srv['name']}[/bold] ({srv['ip']}){domain_tag} - "
+                f"[bold]{srv['id']}[/bold] ({srv['ip']}){domain_tag} - "
                 f"[red]OFFLINE[/red]"
             )
             table = self.query_one("#container-table", ContainerTable)
@@ -454,7 +454,7 @@ class SentinelDashboard(App):
 
         disk_c = severity_color(data.disk_pct, THRESHOLDS["disk_warn"], THRESHOLDS["disk_crit"])
         header.update(
-            f"[bold]{srv['name']}[/bold] ({srv['ip']}){domain_tag} - "
+            f"[bold]{srv['id']}[/bold] ({srv['ip']}){domain_tag} - "
             f"{srv['provider']} / {srv['role']} / {srv['specs']}\n"
             f"CPU: {data.cpu_pct:.1f}%  MEM: {data.mem_pct:.1f}% "
             f"({fmt_bytes(data.mem_used)}/{fmt_bytes(data.mem_total)})  "
