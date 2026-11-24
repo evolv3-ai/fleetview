@@ -4,10 +4,11 @@ from __future__ import annotations
 import re
 
 from .models import ContainerInfo, Stack
+from .parse import display_name  # re-exported: the TUI imports grouping.display_name
 
 __all__ = [
     "PLATFORM_NAMES", "is_platform", "stack_key", "stack_kind", "parse_domains",
-    "group_stacks",
+    "group_stacks", "display_name",
 ]
 
 PLATFORM_NAMES: frozenset[str] = frozenset({
