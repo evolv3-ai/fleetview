@@ -1,0 +1,5 @@
+[
+  {"id": "coolify-proxy", "cpu": {"percent": "12.5", "time": "1795494939531"}, "memory": {"used": 52428800, "usedPercent": 0.61, "total": 8589934592, "time": "1795494939531"}, "disk": {"time": "1795494939531", "writableLayer": 0, "volumesTotal": 0}, "network": null, "status": {"state": "running", "health": "healthy", "restartCount": 0}, "time": "1795494939531"},
+  {"id": "langfuse", "cpu": {"percent": 3.25, "time": "1795494939531"}, "memory": {"used": 314572800, "usedPercent": 3.66, "total": 8589934592, "time": "1795494939531"}, "disk": null, "network": null, "status": {"state": "running", "health": null, "restartCount": 2}, "time": "1795494939531"},
+  {"id": "stopped-one", "cpu": null, "memory": null, "disk": null, "network": null, "status": {"state": "exited", "health": null, "restartCount": 0}, "time": "1795494939531"}
+]
