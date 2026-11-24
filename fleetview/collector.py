@@ -39,7 +39,9 @@ def _now() -> datetime:
 
 
 def _is_sudo_prompt(stderr: str) -> bool:
-    return "a password is required" in stderr or "sudo:" in stderr
+    # only the prompts `sudo -n` emits when it would need a password, not warnings
+    # such as "sudo: unable to resolve host ..."
+    return "a password is required" in stderr or "a terminal is required" in stderr
 
 
 def _join_errors(errors: list[str]) -> str | None:
@@ -74,11 +76,14 @@ class ServerCollector:
         runner_factory: Callable[[ServerConfig], Runner] = SSHRunner,
         command_timeout: float = 10.0,
         clock: Callable[[], float] = time.monotonic,
+        poll_timeout: float | None = None,
     ):
         self.server = server
         self.runner_factory = runner_factory
         self.command_timeout = command_timeout
         self.clock = clock
+        # hard cap on one poll: connect (10 s) + one command round + slack
+        self.poll_timeout = poll_timeout if poll_timeout is not None else command_timeout + 12.0
         self._runner: Runner | None = None
         self._failures = 0
         self._retry_at = 0.0
@@ -106,16 +111,21 @@ class ServerCollector:
             wait = max(1, round(self._retry_at - now))
             return self._offline(f"reconnecting in {wait}s")
         try:
-            return await self._poll(include_inventory)
+            return await asyncio.wait_for(self._poll(include_inventory), self.poll_timeout)
+        except asyncio.TimeoutError:
+            return await self._fail(f"poll timeout after {self.poll_timeout:g}s")
         except TransportError as e:
-            await self._drop_runner()
-            self._failures += 1
-            step = BACKOFF_STEPS[min(self._failures, len(BACKOFF_STEPS)) - 1]
-            self._retry_at = self.clock() + step
-            return self._offline(str(e) or "connection failed")
+            return await self._fail(str(e) or "connection failed")
         except Exception as e:  # never raise out of poll
             await self._drop_runner()
             return self._offline(f"{type(e).__name__}: {e}")
+
+    async def _fail(self, error: str) -> ServerSnapshot:
+        await self._drop_runner()
+        self._failures += 1
+        step = BACKOFF_STEPS[min(self._failures, len(BACKOFF_STEPS)) - 1]
+        self._retry_at = self.clock() + step
+        return self._offline(error)
 
     async def _poll(self, include_inventory: bool) -> ServerSnapshot:
         if self._runner is None:
@@ -132,6 +142,8 @@ class ServerCollector:
         for r in results:
             if isinstance(r, TransportError):
                 raise r
+        if all(isinstance(r, asyncio.TimeoutError) for r in results):
+            raise TransportError(f"all commands: timeout after {self.command_timeout:g}s")
 
         snap = ServerSnapshot(server=self.server, fetched_at=_now())
         errors: list[str] = []
@@ -207,8 +219,13 @@ class FleetCollector:
         self.cfg = cfg
         self.collectors = [ServerCollector(s, runner_factory=runner_factory) for s in cfg.servers]
 
+        self._by_id = {c.server.id: c for c in self.collectors}
+
     async def poll(self, include_inventory: bool) -> list[ServerSnapshot]:
         return list(await asyncio.gather(*(c.poll(include_inventory) for c in self.collectors)))
+
+    async def poll_server(self, server_id: str, include_inventory: bool) -> ServerSnapshot:
+        return await self._by_id[server_id].poll(include_inventory)
 
     async def close(self) -> None:
         await asyncio.gather(*(c.close() for c in self.collectors), return_exceptions=True)

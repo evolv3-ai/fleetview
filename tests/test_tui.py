@@ -17,15 +17,21 @@ async def _snap(sid, summary="summary_full.json", containers="containers_current
     return await ServerCollector(server(sid), runner_factory=lambda s: fake).poll(True)
 
 
+IDS = ["htz-04-5-213", "htz-03-178-51"]
+
+
 class FakeCollector:
-    def __init__(self, builder):
+    def __init__(self, builder, hang=()):
         self.builder = builder
+        self.hang = set(hang)
         self.polls = []
         self.closed = False
 
-    async def poll(self, include_inventory):
-        self.polls.append(include_inventory)
-        return await self.builder()
+    async def poll_server(self, server_id, include_inventory):
+        self.polls.append((server_id, include_inventory))
+        if server_id in self.hang:
+            await asyncio.sleep(30)
+        return (await self.builder())[IDS.index(server_id)]
 
     async def close(self):
         self.closed = True
@@ -149,9 +155,29 @@ def test_tui_inventory_interval():
         col = FakeCollector(_two)
         app = SentinelDashboard(_cfg(), col)
         async with app.run_test() as pilot:
-            await app.poll_now()
+            await pilot.pause()
             await app.poll_now()
             await pilot.pause()
-        assert col.polls[0] is True
-        assert col.polls[1] is False
+        for sid in IDS:
+            mine = [inv for s, inv in col.polls if s == sid]
+            assert mine[0] is True and mine[1:] and not any(mine[1:])
+    _run(go())
+
+
+def test_tui_hung_server_does_not_block_others():
+    async def go():
+        col = FakeCollector(_two, hang={"htz-03-178-51"})
+        app = SentinelDashboard(_cfg(), col)
+        async with app.run_test() as pilot:
+            await pilot.pause()
+            for _ in range(3):  # several refresh ticks while htz-03 is still hung
+                app._tick()
+                await pilot.pause()
+            fast = str(app.query_one("#panel-htz-04-5-213", ServerPanel).render())
+            slow = str(app.query_one("#panel-htz-03-178-51", ServerPanel).render())
+            assert "load 0.42" in fast
+            assert "Loading" in slow
+            # the hung poll is not cancelled and restarted on every tick
+            assert [s for s, _ in col.polls].count("htz-03-178-51") == 1
+            assert [s for s, _ in col.polls].count("htz-04-5-213") >= 3
     _run(go())

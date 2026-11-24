@@ -57,3 +57,11 @@ def test_load_config_env_and_missing_file(tmp_path, monkeypatch):
     assert len(load_config().servers) == 2
     with pytest.raises(ConfigError):
         load_config(tmp_path / "nope.py")
+
+
+def test_shipped_example_config_loads():
+    from pathlib import Path
+    example = Path(__file__).parent.parent / "config.example.py"
+    cfg = load_config(example)
+    assert cfg.servers and all(s.sentinel_container for s in cfg.servers)
+    assert "TOKEN" not in example.read_text(encoding="utf-8")

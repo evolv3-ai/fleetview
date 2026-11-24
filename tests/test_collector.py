@@ -179,3 +179,47 @@ def test_token_never_in_command():
     for name in ("health", "version"):
         assert "TOKEN" not in cmds[name]
     assert cmds["containers"].endswith("/api/containers/current'")
+
+
+def test_harmless_sudo_warning_is_not_password_error():
+    resp = fixture_responses()
+    for k, v in list(resp.items()):
+        resp[k] = CommandResult(v.exit_status, v.stdout, "sudo: unable to resolve host vmi123: Name or service not known\n")
+    snap = run(ServerCollector(server(user="admin"), runner_factory=lambda s: FakeRunner(resp)).poll(True))
+    assert snap.error is None
+    assert snap.online
+
+
+def test_all_commands_timing_out_starts_backoff():
+    clock = Clock()
+    calls = []
+
+    def factory(s):
+        calls.append(1)
+        return FakeRunner({k: asyncio.TimeoutError() for k in fixture_responses()})
+
+    col = ServerCollector(server(), runner_factory=factory, clock=clock)
+    first = run(col.poll(True))
+    assert not first.online and "timeout" in first.error
+    clock.t += 2
+    assert run(col.poll(True)).error.startswith("reconnecting in")
+    assert len(calls) == 1
+
+
+def test_hung_poll_is_capped_and_backs_off():
+    class Hang(FakeRunner):
+        async def run(self, cmd, timeout):
+            await asyncio.sleep(30)
+
+    clock = Clock()
+    col = ServerCollector(server(), runner_factory=lambda s: Hang({}), clock=clock, poll_timeout=0.2)
+    snap = run(asyncio.wait_for(col.poll(True), 5))
+    assert not snap.online and "timeout" in snap.error
+    assert run(col.poll(True)).error.startswith("reconnecting in")
+
+
+def test_fleet_poll_server_by_id():
+    servers = [server("a-01"), server("b-02")]
+    fc = FleetCollector(FleetConfig(servers=servers), runner_factory=lambda s: FakeRunner(fixture_responses()))
+    snap = run(fc.poll_server("b-02", True))
+    assert snap.server.id == "b-02" and snap.online

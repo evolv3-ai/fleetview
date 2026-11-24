@@ -1,6 +1,7 @@
 """Sentinel Fleet Dashboard - Textual TUI reading Rust Sentinel over SSH."""
 from __future__ import annotations
 
+import asyncio
 import time
 import webbrowser
 from datetime import datetime
@@ -164,7 +165,8 @@ class SentinelDashboard(App):
         self.collector = collector
         self._snaps: dict[str, ServerSnapshot] = {}
         self._panels: dict[str, ServerPanel] = {}
-        self._last_inventory: float | None = None
+        self._last_inventory: dict[str, float] = {}
+        self._inflight: set[str] = set()
 
     def compose(self) -> ComposeResult:
         yield Header()
@@ -188,22 +190,37 @@ class SentinelDashboard(App):
         self._tick()
 
     def _tick(self) -> None:
-        self.run_worker(self.poll_now(), exclusive=True, group="poll")
+        # One worker per server; a server whose poll is still running is skipped,
+        # never cancelled, so one slow or hung server cannot stall the others.
+        for srv in self.cfg.servers:
+            if srv.id not in self._inflight:
+                self._inflight.add(srv.id)
+                self.run_worker(self._poll_one(srv.id), group="poll")
 
     async def poll_now(self, force_inventory: bool = False) -> None:
-        now = time.monotonic()
-        inventory = (force_inventory or self._last_inventory is None
-                     or now - self._last_inventory >= self.cfg.inventory_interval)
-        if inventory:
-            self._last_inventory = now  # claim before awaiting so overlapping polls don't repeat it
-        snaps = await self.collector.poll(inventory)
-        for s in snaps:
-            self._snaps[s.server.id] = s
-            panel = self._panels.get(s.server.id)
-            if panel is not None:
-                panel.update_data(s)
+        """Poll every server that is not already being polled, and wait for them."""
+        ids = [s.id for s in self.cfg.servers if s.id not in self._inflight]
+        self._inflight.update(ids)
+        await asyncio.gather(*(self._poll_one(i, force_inventory) for i in ids))
+
+    async def _poll_one(self, server_id: str, force_inventory: bool = False) -> None:
+        self._inflight.add(server_id)
+        try:
+            now = time.monotonic()
+            last = self._last_inventory.get(server_id)
+            inventory = force_inventory or last is None or now - last >= self.cfg.inventory_interval
+            if inventory:
+                self._last_inventory[server_id] = now
+            snap = await self.collector.poll_server(server_id, inventory)
+        finally:
+            self._inflight.discard(server_id)
+        self._snaps[server_id] = snap
+        panel = self._panels.get(server_id)
+        if panel is not None:
+            panel.update_data(snap)
         self._update_fleet_summary()
-        self._update_detail()
+        if self.cfg.servers and self.cfg.servers[self.selected_index].id == server_id:
+            self._update_detail()
 
     # navigation -----------------------------------------------------------
     def watch_selected_index(self, old: int, new: int) -> None:
@@ -239,7 +256,7 @@ class SentinelDashboard(App):
             self.notify(f"No URL configured for {srv.id}", severity="warning")
 
     def action_refresh(self) -> None:
-        self.run_worker(self.poll_now(force_inventory=True), exclusive=True, group="poll")
+        self.run_worker(self.poll_now(force_inventory=True), group="poll")
 
     # rendering --------------------------------------------------------------
     def summary_text(self) -> str:

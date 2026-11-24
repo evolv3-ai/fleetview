@@ -1,41 +1,33 @@
-"""Fleet configuration for FleetView dashboard.
+"""Fleet configuration for FleetView (SSH mode).
 
-Copy this file to config.py and fill in your server details:
-    cp config.example.py config.py
+Copy this file to config.py and fill in your servers, or generate it from the
+device profile:
+    python D:/devops-native/scripts/profile-to-fleetview.py > config.py
+
+FleetView reads each server's Sentinel over SSH (`docker exec <container> curl ...`)
+with the token already inside that container, so no token belongs in this file.
 """
-
-# Sentinel API token (must match the token on your sentinel instances)
-SENTINEL_TOKEN = "your-sentinel-token-here"
-
-# SSH key paths (used for tunnel mode)
-SSH_KEY_ED25519 = "~/.ssh/id_ed25519"
-SSH_KEY_RSA = "~/.ssh/id_rsa"
 
 SERVERS = [
     {
         "id": "web-01",
-        "name": "web-01",
-        "ip": "192.168.1.10",
+        "ip": "192.0.2.10",
+        "ssh_user": "root",              # non-root users need passwordless sudo
+        "ssh_key": "~/.ssh/id_ed25519",
+        "sentinel_mode": "coolify",      # "coolify" or "standalone"
+        "sentinel_container": "coolify-sentinel",  # or "fleet-sentinel"
         "provider": "Hetzner",
-        "role": "Web",
+        "role": "Coolify",
         "specs": "4 vCPU / 8 GB",
-        "ssh_key": SSH_KEY_ED25519,
         "domain": "example.com",
-        "url": "https://example.com",
+        "url": "https://coolify.example.com",
     },
     # Add more servers here...
 ]
 
-# Connection mode: "direct" polls IPs directly, "tunnel" uses SSH tunnels
-# Port 8888 is typically firewalled; use tunnel mode from local machines
-# or direct mode when running on one of the servers
-CONNECTION_MODE = "tunnel"
-
-# SSH tunnel config (used when CONNECTION_MODE == "tunnel")
-SSH_USER = "root"
-
-# Refresh interval in seconds
+# Seconds between metric polls / between docker inventory refreshes
 REFRESH_INTERVAL = 5
+INVENTORY_INTERVAL = 60
 
 # Thresholds for color coding
 THRESHOLDS = {

@@ -75,14 +75,22 @@ class SSHRunner:
     async def run(self, cmd: str, timeout: float) -> CommandResult:
         conn = await self._connection()
         try:
-            res = await asyncio.wait_for(conn.run(cmd, check=False), timeout=timeout)
-        except asyncio.TimeoutError:
-            raise
+            proc = await conn.create_process(cmd)
         except (OSError, asyncssh.Error) as e:
             await self._reset()
             raise TransportError(_short(e)) from e
-        status = res.exit_status if res.exit_status is not None else -1
-        return CommandResult(status, _text(res.stdout), _text(res.stderr))
+        try:
+            stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=timeout)
+        except BaseException as e:
+            # timeout or cancellation: close the channel so it does not linger
+            # against sshd's MaxSessions
+            proc.close()
+            if isinstance(e, (OSError, asyncssh.Error)) and not isinstance(e, TimeoutError):
+                await self._reset()
+                raise TransportError(_short(e)) from e
+            raise
+        status = proc.exit_status if proc.exit_status is not None else -1
+        return CommandResult(status, _text(stdout), _text(stderr))
 
     async def _reset(self) -> None:
         conn, self._conn = self._conn, None
