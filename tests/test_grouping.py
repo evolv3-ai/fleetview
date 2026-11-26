@@ -104,3 +104,14 @@ def test_platform_stacks_sort_last():
     assert proxy.platform is True
     assert is_platform(_c("coolify-proxy-error-pages"))
     assert not is_platform(_c("coolify-something-else"))
+
+
+def test_kasm_session_and_helper_containers_are_platform():
+    # KASM user sessions (kasm.kasmid) and helpers (kasm.helper) come and go; never a deployment.
+    session = _c("adminkasm.lo_dd82ae03", {"kasm.kasmid": "dd82ae03-e3c4", "com.kasmweb.image": "true"})
+    helper = _c("infallible_chatelet", {"kasm.helper": ""}, state="created")
+    app = _c("clever_hodgkin")
+    by_key = {s.key: s for s in group_stacks([session, helper, app])}
+    assert by_key["adminkasm.lo_dd82ae03"].platform is True
+    assert by_key["infallible_chatelet"].platform is True
+    assert by_key["clever_hodgkin"].platform is False

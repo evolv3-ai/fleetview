@@ -26,8 +26,13 @@ COMPOSE_PROJECT = "com.docker.compose.project"
 _COOLIFY_TYPES = {"application", "service", "database"}
 
 
+# KASM user sessions and helpers: ephemeral containers the KASM agent starts and reaps.
+_KASM_EPHEMERAL_LABELS = ("kasm.kasmid", "kasm.helper")
+
+
 def is_platform(c: ContainerInfo) -> bool:
-    return c.name in PLATFORM_NAMES or c.name.startswith("coolify-proxy")
+    return (c.name in PLATFORM_NAMES or c.name.startswith("coolify-proxy")
+            or any(k in c.labels for k in _KASM_EPHEMERAL_LABELS))
 
 
 def _is_db_proxy(c: ContainerInfo) -> bool:

@@ -5,6 +5,8 @@ import re
 from dataclasses import dataclass, field
 
 _VERSION_SUFFIX = re.compile(r"-\d.*$")
+# Platform software, not a deployed app: never drift. Matched after the version suffix is stripped.
+_PLATFORM_APPS = frozenset({"coolify", "docker", "sentinel", "cloudflared"})
 
 
 @dataclass
@@ -72,6 +74,8 @@ def reconcile(snapshot: dict, profile: dict) -> ReconcileReport:
         haystack = [h.lower() for h in haystack if h]
         for app in prof_srv.get("apps") or []:
             needle = _VERSION_SUFFIX.sub("", str(app).lower()).strip()
+            if needle in _PLATFORM_APPS:
+                continue
             if not needle or not any(needle in h for h in haystack):
                 report.apps_drift.append((sid, str(app)))
     return report

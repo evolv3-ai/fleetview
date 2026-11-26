@@ -43,7 +43,7 @@ def test_reconcile_reports_untracked_missing_and_drift():
     assert r.untracked == [("cbo-01-217-110", "uuiduntracked", "mystery-app")]
     assert r.missing == [("cbo-01-gone", "uuidgone")]
     assert r.not_running == [("cbo-01-old", "uuidstopped")]
-    assert r.apps_drift == [("cbo-01-217-110", "affine"), ("cbo-01-217-110", "coolify-4.3.23")]
+    assert r.apps_drift == [("cbo-01-217-110", "affine")]  # coolify-4.3.23 is platform, not drift
     assert ("cbo-01-217-110", "jellyfin-12.2") not in r.apps_drift
     assert all(srv == "cbo-01-217-110" for srv, _ in r.apps_drift)
 
@@ -54,3 +54,12 @@ def test_format_report_sections():
         assert head in text
     empty = format_report(ReconcileReport([], [], [], []))
     assert empty.count("none") == 4
+
+
+def test_apps_drift_ignores_platform_names():
+    profile = {"servers": [{"id": "cbo-01-217-110",
+                            "apps": ["coolify", "coolify-4.5.0", "docker", "sentinel",
+                                     "sentinel-0.0.18", "cloudflared", "affine"]}],
+               "deployments": {}}
+    r = reconcile(SNAPSHOT, profile)
+    assert r.apps_drift == [("cbo-01-217-110", "affine")]
